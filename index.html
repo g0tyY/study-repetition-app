@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Учебное повторение</title>
+  <link href="https://cdn.jsdelivr.net/npm/lucide-static@0.262.0/font/lucide.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #121212;
+      --fg: #ffffff;
+      --accent: #0077ff;
+      --card: #1e1e1e;
+      --done: #4caf50;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    header, nav {
+      background-color: var(--card);
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    nav button {
+      background: none;
+      border: none;
+      color: var(--fg);
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    main {
+      padding: 1rem;
+    }
+    .todo-list, .calendar-view {
+      display: none;
+    }
+    .active {
+      display: block;
+    }
+    .task {
+      background: var(--card);
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .done {
+      color: var(--done);
+    }
+    .calendar-popup {
+      position: absolute;
+      top: 60px;
+      right: 10px;
+      background: var(--card);
+      padding: 1rem;
+      border-radius: 10px;
+      display: none;
+      z-index: 100;
+    }
+    .calendar-popup.active {
+      display: block;
+    }
+    .responsive {
+      max-width: 800px;
+      margin: auto;
+    }
+    input, select, button {
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Мои Повторы</strong>
+    <nav>
+      <button onclick="toggleView('todo')">Сегодня</button>
+      <button onclick="toggleCalendarPopup()">Календарь</button>
+      <button onclick="exportData()">⬇️</button>
+      <button onclick="importData()">⬆️</button>
+    </nav>
+  </header>
+
+  <div class="calendar-popup" id="calendarPopup">
+    <h3>Календарь</h3>
+    <div id="calendarContent"></div>
+  </div>
+
+  <main class="responsive">
+    <section>
+      <h2>Добавить тему</h2>
+      <input type="text" id="topicInput" placeholder="Введите тему">
+      <select id="modeSelect">
+        <option value="fast">Быстро</option>
+        <option value="long">Надолго</option>
+      </select>
+      <button onclick="addTopic()">Добавить</button>
+    </section>
+
+    <section id="todo" class="todo-list active">
+      <h2>Повторить сегодня</h2>
+      <div id="todayTasks"></div>
+    </section>
+
+    <section id="calendar" class="calendar-view">
+      <h2>Полный календарь</h2>
+      <input type="date" onchange="viewDay(this.value)">
+      <div id="fullCalendarTasks"></div>
+    </section>
+  </main>
+
+  <input type="file" id="importFile" style="display:none" onchange="loadImport(event)">
+
+  <script>
+    const STORAGE_KEY = 'repetitionAppData';
+    let topics = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+    const REPEAT_INTERVALS = {
+      fast: [1, 2, 3, 4, 5, 6, 7],
+      long: [2, 4, 6, 9, 13, 18, 24, 31, 39, 48, 58, 69, 81, 94, 108, 123, 139]
+    };
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(topics));
+    }
+
+    function addTopic() {
+      const name = document.getElementById('topicInput').value.trim();
+      const mode = document.getElementById('modeSelect').value;
+      if (!name) return;
+
+      const today = new Date();
+      const plan = REPEAT_INTERVALS[mode].map(d => {
+        const dt = new Date(today);
+        dt.setDate(today.getDate() + d);
+        return dt.toISOString().slice(0, 10);
+      });
+
+      topics.push({ name, plan, done: [], mode });
+      saveData();
+      document.getElementById('topicInput').value = '';
+      renderToday();
+    }
+
+    function renderToday() {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const list = document.getElementById('todayTasks');
+      list.innerHTML = '';
+      topics.forEach(t => {
+        if (t.plan.includes(todayStr) && !t.done.includes(todayStr)) {
+          const div = document.createElement('div');
+          div.className = 'task';
+          div.innerHTML = `<span>${t.name}</span><button onclick="markDone('${t.name}')">✅</button>`;
+          list.appendChild(div);
+        }
+      });
+    }
+
+    function markDone(name) {
+      const today = new Date().toISOString().slice(0, 10);
+      topics = topics.map(t => t.name === name ? { ...t, done: [...t.done, today] } : t);
+      saveData();
+      renderToday();
+    }
+
+    function toggleView(view) {
+      document.getElementById('todo').classList.remove('active');
+      document.getElementById('calendar').classList.remove('active');
+      document.getElementById(view).classList.add('active');
+    }
+
+    function toggleCalendarPopup() {
+      const cal = document.getElementById('calendarPopup');
+      cal.classList.toggle('active');
+      showCalendarMonth();
+    }
+
+    function showCalendarMonth() {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = today.getMonth();
+      const content = document.getElementById('calendarContent');
+      content.innerHTML = '';
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const items = topics.filter(t => t.plan.includes(dateStr));
+        if (items.length > 0) {
+          const el = document.createElement('div');
+          el.innerHTML = `<strong>${dateStr}</strong>: ${items.map(i => i.name).join(', ')}`;
+          content.appendChild(el);
+        }
+      }
+    }
+
+    function viewDay(dateStr) {
+      const div = document.getElementById('fullCalendarTasks');
+      div.innerHTML = `<h3>${dateStr}</h3>`;
+      const items = topics.filter(t => t.plan.includes(dateStr));
+      items.forEach(t => {
+        const el = document.createElement('div');
+        el.className = 'task';
+        el.textContent = t.name;
+        div.appendChild(el);
+      });
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(topics)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'topics.json';
+      a.click();
+    }
+
+    function importData() {
+      document.getElementById('importFile').click();
+    }
+
+    function loadImport(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        topics = JSON.parse(e.target.result);
+        saveData();
+        renderToday();
+      };
+      reader.readAsText(file);
+    }
+
+    renderToday();
+  </script>
+</body>
+</html>
